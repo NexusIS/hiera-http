@@ -5,7 +5,10 @@ class Hiera
       def initialize
         require 'net/http'
         require 'net/https'
+        require 'logger'
         @config = Config[:http]
+        @log = Logger.new('/var/log/puppet/hiera_http.log')
+        @log.level = Logger::DEBUG
 
         @http = Net::HTTP.new(@config[:host], @config[:port])
         @http.read_timeout = @config[:http_read_timeout] || 10
@@ -43,7 +46,7 @@ class Hiera
 
         paths.each do |path|
 
-          Hiera.debug("[hiera-http]: Lookup #{key} from #{@config[:host]}:#{@config[:port]}#{path}")
+          @log.debug("[hiera-http]: Lookup #{key} from #{@config[:host]}:#{@config[:port]}#{path}")
           httpreq = Net::HTTP::Get.new(path)
 
           if @config[:use_auth]
@@ -53,14 +56,14 @@ class Hiera
           begin
             httpres = @http.request(httpreq)
           rescue Exception => e
-            Hiera.warn("[hiera-http]: Net::HTTP threw exception #{e.message}")
+            @log.warn("[hiera-http]: Net::HTTP threw exception #{e.message}")
             raise Exception, e.message unless @config[:failure] == 'graceful'
             next
           end
 
           unless httpres.kind_of?(Net::HTTPSuccess)
-            Hiera.debug("[hiera-http]: bad http response from #{@config[:host]}:#{@config[:port]}#{path}")
-            Hiera.debug("HTTP response code was #{httpres.code}")
+            @log.debug("[hiera-http]: bad http response from #{@config[:host]}:#{@config[:port]}#{path}")
+            @log.debug("HTTP response code was #{httpres.code}")
             unless ( httpres.code == '404' && @config[:ignore_404] == true )
               raise Exception, 'Bad HTTP response' unless @config[:failure] == 'graceful'
             end
@@ -92,7 +95,7 @@ class Hiera
 
         return nil unless answer
 
-        Hiera.debug("[hiera-http]: Query returned data, parsing response as #{@config[:output] || 'plain'}")
+        @log.debug("[hiera-http]: Query returned data, parsing response as #{@config[:output] || 'plain'}")
 
         case @config[:output]
 
@@ -127,12 +130,11 @@ class Hiera
         JSON.parse(answer)[key]
       end
 
-      def yaml_handler(answer)
+      def yaml_handler(key,answer)
         require 'yaml'
-        YAML.parse(answer)[key]
+        YAML.load(answer)[key]
       end
 
     end
   end
 end
-
